@@ -1,0 +1,282 @@
+---
+title: "Nigeria DHS 2023 Results"
+author: "Christopher Troeger"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: 
+  html_document:
+    reference_doc : "Foundation Slides Template.pptx"
+    css : "gates_style_guide.css"
+    toc: yes
+    toc_float:
+      collapsed: true
+---
+
+```{r setup, include=FALSE}
+#reference_doc : "C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Custom Office Templates/Foundation Template 2023.potx"
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+source("C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Code/BMGF/R/environment_setup.R")
+
+## Priority states for plotting
+  my_states <- c("Kano","Kaduna","Lagos",
+                 "Zamfara","Niger","Borno","Katsina","Akwa Ibom","Bauchi","Yobe","Plateau")
+
+
+## Import previously prepared shapefile as a data.table
+  nga_dt <- fread("C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Data/Burden Modeling/Nigeria/nigeria_adm1_shapefile_as_datatable.csv")
+## Import and prep DHS data from Nigeria (very annoyingly prepared by DHS program)
+
+  dt_tab2023 <- fread("C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Data/Burden Modeling/Nigeria/nigeria_dhs2023_birth_info.csv")
+  dt_tab2018 <- fread("C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Data/Burden Modeling/Nigeria/nigeria_dhs2018_tabular.csv")
+  dt_old <- fread("C:/Users/christr/OneDrive - Bill & Melinda Gates Foundation/Documents/Data/Burden Modeling/Nigeria/nigeria_dhs2018_birth_info.csv")
+  
+  
+  dt_new <- dt_tab2023[Stratification == "State"]
+  dt_new <- melt(dt_new, id.vars = c("Category","Stratification"))
+  
+  setnames(dt_old, "Value", "value_2018")
+  dt_old[, value_2018 := as.numeric(value_2018)]
+  dt_new[, value := as.numeric(value)]
+  
+## data.table for birth indicators
+  dt_birth <- merge(dt_old, dt_new, 
+              by.x = c("Geography","Indicator"),
+              by.y = c("Category","variable"),
+              all.x = T)
+  
+  dt_birth[, change := value - value_2018]
+  dt_birth[, pct_change := (value - value_2018) / value_2018]
+
+## data.table for child indicators
+  dt <- rbind(dt_tab2023[, round := 2023],
+                    dt_tab2018[, round := 2018],
+                    fill = T)
+    
+## Rename states
+  dt_birth[Geography == "FCT Abuja", Geography := "Federal Capital Territory"]
+  dt_birth[Geography == "Nasarawa", Geography := "Nassarawa"]
+  
+  dt[, Geography := Category]
+  dt[Category == "FCT Abuja", Geography := "Federal Capital Territory"]
+  dt[Category == "Nasarawa", Geography := "Nassarawa"]
+
+
+## Generic mapping function
+  make_map <- function(indicator, map_fill = "change", in_dt = dt_birth){
+    map_dt <- merge(nga_dt, in_dt[Indicator == indicator],
+                    by.x = "name", by.y = "Geography",
+                    all.x = T)
+    map_dt[, fill_var := get(map_fill)]
+    #map_dt[, fill_var := ifelse(map_fill == "pct_change", fill_var * 100, fill_var)]
+    lglb <- ifelse(map_fill == "change", "Absolute change\n2018 to 2023", "Relative change\n2018 to 2023")
+    
+      
+    m <- ggplot(map_dt, aes(x = long, y = lat, group = group, fill = fill_var)) + 
+      geom_polygon(col = "black") +
+      theme_void(base_size = 15) +
+      scale_fill_viridis(lglb) +
+      ggtitle(indicator)
+    print(m)
+  }
+
+```
+
+## Overview
+
+The Demographic and Health Survey (DHS) program has released initial results from their 2023 Nigeria survey <https://dhsprogram.com/pubs/pdf/PR157/PR157.pdf>. This file will contain high-level findings relevant to the Maternal, Newborn, Child Nutrition and Health (MNCNH) team at the Gates Foundation. 
+
+## Section 1: Neonatal, Infant, Child Mortality
+
+At the national level, compared to the 2018 DHS round
+
+* Neonatal mortality increased from 38 to 41 per 1,000 live births (7.9% increase)
+
+* Infant mortality decreased from 67 to 63 per 1,000 live births (6.0% decrease)
+
+* Under-5 mortality decreased from 132 to 110 per 1,000 live births (16.7% decrease)
+
+### Trends
+
+```{r mortality_trends}
+trend_plot <- function(indicator){
+  tmp_dt <- copy(dt)
+  tmp_dt[, my_var := get(indicator)]
+  tmp_dt2 <- dcast(tmp_dt[Stratification == "State"], Geography ~ round, value.var = "my_var", fun.aggregate = sum)
+  tmp_dt2[, increase := ifelse(`2023` > `2018`, "+","-")]
+  
+  p <- ggplot(tmp_dt[Stratification == "State"], aes(x = round, y = my_var)) + 
+    geom_line(aes(group = Geography)) + 
+    geom_label_repel(aes(label = Geography), size = 3)
+  
+  q <- ggplot(tmp_dt2[Geography != "State"], aes(x = 1, xend = 2, y = `2018`, yend = `2023`, group = Geography)) + 
+    geom_segment(col = "darkgray") +
+    geom_segment(data = tmp_dt2[Geography %in% my_states], aes(col = Geography), lwd = 1.05) +
+    geom_text_repel(data = tmp_dt2[Geography %in% my_states], aes(col = Geography, label = Geography), nudge_x = -0.2, direction = "y", hjust = "right", fontface = "bold") +
+    geom_text_repel(data = tmp_dt2[Geography %in% my_states], aes(col = Geography, label = paste0(Geography, "(", increase, ")"), x = 2, y = `2023`), nudge_x = 0.1, direction = "y", hjust = "left", fontface = "bold") +
+    scale_x_continuous("DHS round", breaks = 1:2, labels = c("2018","2023"), expand = expansion(mult = 0.5)) +
+    scale_color_manual("", values = bmgf_categorical2) +
+    guides(col = "none") + 
+    theme_bmgf_classic +
+    scale_y_continuous(indicator)
+  
+  if(indicator == "Neonatal mortality"){
+    q <- q + geom_hline(yintercept = 12, alpha = 0.5, lty = 2)
+  }
+  if(indicator == "Under-5 mortality"){
+    q <- q + geom_hline(yintercept = 25, lty = 2, alpha = 0.5)
+  }
+  
+  q
+}
+
+trend_plot("Neonatal mortality")
+trend_plot("Infant mortality")
+trend_plot("Under-5 mortality")
+
+```
+
+### Geographic distribution
+
+```{r mortality_maps}
+map_mortality <- function(indicator, type = "value", in_dt = dt, flip_palette = F){
+  if(!(type %in% c("value","pct_change","abs_change"))){
+    message("The type must be 'value', 'pct_change', or 'abs_change'!")
+    stop()
+  }
+  
+  if("Indicator" %in% names(in_dt)){
+    tmp_dt2 <- in_dt[Indicator == indicator]
+    setnames(tmp_dt2, c("value_2018","value"), c("2018","2023"))
+  } else {
+    tmp_dt <- copy(in_dt)
+    tmp_dt[, my_var := get(indicator)]
+    tmp_dt2 <- dcast(tmp_dt[Stratification == "State"], Geography ~ round, value.var = "my_var", fun.aggregate = sum)
+  }  
+  
+  if(type == "value"){
+    tmp_dt2[, yvar := `2023`]
+    lglb <- "Reported value\nin 2023"
+  } else if(type == "pct_change"){
+    tmp_dt2[, yvar := (`2023` - `2018`) / `2018` * 100]
+    tmp_dt2[, yvar := ifelse(yvar < (-50), -50, ifelse(yvar > 50, 50, yvar))]
+    lglb <- "Percent change\n2018 to 2023"
+  } else {
+    tmp_dt2[, yvar := `2023` - `2018`]
+    lglb <- "Change\n2018 to 2023"
+  }
+  
+  if(flip_palette == F){
+    diverging_colors <- rev(bmgf_diverging1(7))
+  } else {
+    diverging_colors <- bmgf_diverging1(7)
+  }
+  
+  map_dt <- merge(nga_dt, tmp_dt2, by.x = "name", by.y = "Geography")
+
+  m <- ggplot(map_dt, aes(x = long, y = lat, group = group, fill = yvar)) + 
+      geom_polygon(col = "black") +
+      #geom_polygon(data = map_dt[name %in% my_states], lwd = 1.05, col = "black") + 
+      theme_void(base_size = 15) +
+      ggtitle(indicator) +
+      theme(text = element_text(family = "Noto Sans"))
+  
+  if(type == "pct_change"){
+    m <- m + scale_fill_gradientn(lglb, colors = diverging_colors, limits = c(-51, 51), breaks = c(-50, -25, 0, 25, 50),
+                                labels = c("-50% or greater","-25%","0%","+25%","+50% or greater"))
+  } else {
+    m <- m + scale_fill_gradientn(lglb, colors = bmgf_orange_purple(7))
+  }
+  
+  print(m)
+}
+
+map_dual <- function(i, my_dt = dt, f = F){
+  m1 <- map_mortality(indicator = i, type = "value", in_dt = my_dt, flip_palette = f)
+  #m1 <- m1 + theme(legend.position = "bottom")
+  
+  m2 <- map_mortality(indicator = i, type = "pct_change", in_dt = my_dt, flip_palette = f)
+  #m2 <- m2 + theme(legend.position = "bottom")
+  
+  ggarrange(m1, m2, nrow = 1)
+}
+
+
+map_mortality("Neonatal mortality", type = "value")
+map_mortality("Neonatal mortality", type = "pct_change")
+
+#map_dual(i = "Neonatal mortality")
+
+map_mortality("Infant mortality", type = "value")
+map_mortality("Infant mortality", type = "pct_change")
+
+```
+
+
+## Section 2: Childhood nutritional status
+
+At the national level, childhood nutritional indicators got worse since the 2018 DHS round
+
+* Stunting prevalence increased from 37 to 40%
+
+* Wasting prevalence increased from 7 to 8%
+
+* Underweight prevalence increased from 22 to 27%
+
+
+### Trends
+
+```{r nutrition_lines}
+trend_plot("Stunting")
+trend_plot("Underweight")
+trend_plot("Wasting")
+```
+
+### Geographic distribution
+
+```{r nutrition_maps}
+map_mortality("Stunting", type = "value")
+map_mortality("Underweight", type = "value")
+map_mortality("Wasting", type = "value")
+
+```
+
+
+## Section 3: Pregnancy and childbirth indicators
+```{r quick_prep}
+women1 <- 34193/5*2
+women2 <- 11129
+
+my_se_function <- function(m, sample_size){
+  se <- sqrt(m * (1-m) / sample_size)
+  return(se)
+}
+
+skilled_anc <- c(my_se_function(0.67, women1), my_se_function(0.625, women2))
+anc4 <- c(my_se_function(0.562, women1), my_se_function(0.523, women2))
+irontab <- c(my_se_function(0.702, women1), my_se_function(0.667, women2))
+ifd <- c(my_se_function(0.41, women1), my_se_function(0.459, women2))
+
+```
+
+
+At the national level, antenatal care indicators showed decreases since the 2018 DHS round
+
+* Skilled ANC decreased from 67% in 2018 to 62.5% in 2023
+
+* ANC 4+ decreased from 56.2% in 2018 to 52.3% in 2023
+
+* Iron tablets given at ANC decreased from 70.2% in 2018 to 66.7% in 2023
+
+* In-facility delivery increased from 41.0% in 2018 to 45.9% in 2023
+
+There were approximately 13,700 women in the 2018 survey and 11,100 women in the 2023 survey
+
+These values are all from births in the past 2 years
+
+
+```{r pregnancy_maps}
+map_mortality(in_dt = dt_birth, indicator = "Antenatal care from a skilled provider", type = "pct_change", flip_palette = T)
+map_mortality(in_dt = dt_birth, indicator = "Antenatal visits for pregnancy: 4+ visits", type = "pct_change", flip_palette = T)
+map_mortality(in_dt = dt_birth, indicator = "Antenatal care content: Received iron tablets or syrup", type = "pct_change", flip_palette = T)
+map_mortality(in_dt = dt_birth, indicator = "Place of delivery: Health facility", type = "pct_change", flip_palette = T)
+
+```
