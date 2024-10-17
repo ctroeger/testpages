@@ -1,0 +1,56 @@
+/* Gates Foundation Style and Theme Guidelines */
+
+/* Fonts */
+body {
+    font-family: 'Noto', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cambria', serif;
+}
+
+p, li, a, span {
+    font-family: 'Calibri', sans-serif;
+}
+
+/* Colors */
+body {
+    background-color: #FFFFFF; /* White */
+    color: #000000; /* Black */
+}
+
+.primary-color {
+    color: #C000FF; /* RGB(192,0,255) */
+}
+
+.secondary-color {
+    color: #6200FF; /* RGB(98,0,255) */
+}
+
+.tertiary-color {
+    color: #00A8FF; /* RGB(0,168,255) */
+}
+
+.quaternary-color {
+    color: #1FFF4E; /* RGB(31,255,78) */
+}
+
+.quinary-color {
+    color: #FFD500; /* RGB(255,213,0) */
+}
+
+.senary-color {
+    color: #FF8100; /* RGB(255,129,0) */
+}
+
+.septenary-color {
+    color: #FF1F00; /* RGB(255,31,0) */
+}
+
+.octonary-color {
+    color: #E0E0E0; /* RGB(244,244,244) */
+}
+
+.nonary-color {
+    color: #CBCBCB; /* RGB(203,203,203) */
+}
