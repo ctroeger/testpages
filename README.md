@@ -14,6 +14,7 @@
 ### Example
 
 **Modeling interventions for post-partum hemorrhage in Africa and South Asia**
+
 Christopher Troeger, Stefanie Robinson, Laura Lamberti
 October, 2024
 
